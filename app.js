@@ -10,7 +10,19 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
+const axios = require("axios")
+
 const User = require('./model/user');
+
+const path = require('path');
+
+const wallet = require('./model/wallet');
+// const wallet = require('./model/wallet');
+const transaction = require('./model/transaction');
+// const wallet = require('./model/wallet');
+
+
+
 
 /* Telling the server to use the express.json() middleware. */
 app.use(express.json());
@@ -41,10 +53,10 @@ app.post('/register', async (req, res) => {
       first_name,
       last_name,
       email: email.toLowerCase(), // sanitize: convert email to lowercase
-      password: encryptedPassword(),
+      password: encryptedPassword,
     });
 
-   /* Creating a token for the user. */
+    /* Creating a token for the user. */
     const token = jwt.sign(
       { user_id: user._id, email },
       process.env.TOKEN_KEY,
@@ -53,19 +65,202 @@ app.post('/register', async (req, res) => {
       }
     );
 
-   /* Assigning the token to the user. */
-    user.token = token
+    /* Assigning the token to the user. */
+    user.token = token;
 
-   /* Sending the user object to the client. */
-   // return new user
-    res.status(201).json(user)
-
+    /* Sending the user object to the client. */
+    // return new user
+    res.status(201).json(user);
   } catch (error) {
-    console.log(error)
+    console.log(error);
   }
 });
 
 // login Route
-app.post('/login', (req, res) => {});
+app.post('/login', async (req, res) => {
+  try {
+    /* Destructuring the email and password from the request body. */
+    const { email, password } = req.body;
+
+    /* Checking if the user has provided all the required input. */
+    if (!(email && password)) {
+      res.status(400).send('All input is required');
+    }
+
+    /* Checking if the user already exist in the database. */
+    const user = await User.findOne({ email });
+
+    /* Checking if the user exist and if the password is correct. If the password is correct, it will
+   create a token for the user and assign it to the user. If the password is incorrect, it will send
+   an error message to the client. */
+    if (user && (await bcrypt.compare(password, user.password))) {
+      const token = jwt.sign(
+        { user_id: user._id, email },
+        process.env.TOKEN_KEY,
+        {
+          expiresIn: '2h',
+        }
+      );
+
+      user.token = token;
+
+      res.status(400).send('Invalid Credentials');
+    }
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.get('/pay', (req, res) => {
+  res.sendFile(path.join(__dirname + '/index.html'));
+});
+
+app.get('/response', async (req, res) => {
+  /* Destructuring the transaction_id from the request query. */
+  const { transaction_id } = req.query;
+
+  /* Creating a url to make a request to the flutterwave api to verify the transaction. */
+  const url = `http://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
+
+  /* Making a request to the flutterwave api to verify the transaction. */
+  const response = await axios({
+    url,
+    method: 'get',
+    header: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `${process.env.FLUTTERWAVE_V3_SECRET_KEY}`,
+    },
+  });
+
+ /* Destructuring the response.data.data object. */
+  const { status, currency, id, amount, customer } = response.data.data;
+
+  /* Finding a user by email. */
+  const user = await User.findOne({ email: customer.email });
+
+  /* Calling the validateUserWallet function and passing the user._id as an argument. */
+  const wallet = await validateUserWallet(user._id);
+
+ /* Creating a wallet transaction for a user. */
+  await createWalletTransaction(user._id, status, currency, amount);
+
+  /* Updating the wallet of the user. */
+  await updateWallet(user._id, amount);
+
+  /* Returning a response to the client. */
+  return res.status(200).json({
+    response: 'wallet funded successfully',
+    data: wallet,
+  });
+});
+
+// Validating User Wallet
+/**
+ * It checks if a user has a wallet, if not, it creates one for them.
+ * @param userId - The userId of the user who is making the payment
+ * @returns The userWallet or the wallet.
+ */
+const validateUserWallet = async (userId) => {
+  try {
+    const userWallet = await wallet.findOne({ userId });
+
+    if (!userWallet) {
+      const wallet = await wallet.create({
+        userId,
+      });
+
+      return wallet;
+    }
+
+    return userWallet;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+// Create wallet Transaction
+/**
+ * It creates a wallet transaction for a user.
+ * @param userId - The userId of the user who is making the transaction
+ * @param status - 'pending'
+ * @param currency - The currency of the transaction.
+ * @param amount - The amount of money to be added to the wallet
+ * @returns The walletTransaction object
+ */
+const createWalletTransaction = async (userId, status, currency, amount) => {
+  try {
+    const walletTransaction = await walletTransaction.create({
+      amount,
+      userId,
+      isInflow: true,
+      currency,
+      status,
+    });
+    return walletTransaction;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+// Create Transaction
+/**
+ * It creates a transaction
+ * @param userId - The id of the user who made the payment.
+ * @param id - The transaction ID.
+ * @param status - The status of the transaction.
+ * @param currency - The currency of the transaction.
+ * @param amount - The amount to be charged.
+ * @param customer - {
+ */
+const createTransaction = async (
+  userId,
+  id,
+  status,
+  currency,
+  amount,
+  customer
+) => {
+  try {
+    // create transaction
+
+    const transaction = await transaction.create({
+      userId,
+      transactionId: id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone_number,
+      amount,
+      currency,
+      paymentStatus: status,
+      paymentGateway: 'flutterwave',
+    });
+  } catch (
+    /* A variable that is used to store the error message. */
+    error
+  ) {
+    console.log(error);
+  }
+};
+
+//update wallet
+/**
+ * It finds a wallet by userId, increments the balance by the amount, and returns the updated wallet.
+ * @param userId - The userId of the user whose wallet you want to update.
+ * @param amount - the amount to be added to the wallet
+ * @returns The wallet object.
+ */
+const updateWallet = async (userId, amount) => {
+  try {
+    const wallet = await wallet.findOneAndUpdate(
+      { userId },
+      { $inc: { balance: amount } },
+      { new: true }
+    );
+    return wallet;
+  } catch (error) {
+    console.log(error);
+  }
+};
 
 module.exports = app;
