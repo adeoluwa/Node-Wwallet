@@ -17,9 +17,11 @@ const User = require('./model/user');
 const path = require('path');
 
 const wallet = require('./model/wallet');
-// const wallet = require('./model/wallet');
+
+const walletTransaction = require("./model/wallet_transaction")
+
 const transaction = require('./model/transaction');
-// const wallet = require('./model/wallet');
+
 
 
 
@@ -115,23 +117,27 @@ app.get('/pay', (req, res) => {
   res.sendFile(path.join(__dirname + '/index.html'));
 });
 
+
+
 app.get('/response', async (req, res) => {
   /* Destructuring the transaction_id from the request query. */
   const { transaction_id } = req.query;
 
   /* Creating a url to make a request to the flutterwave api to verify the transaction. */
-  const url = `http://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
+  const url = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
 
   /* Making a request to the flutterwave api to verify the transaction. */
   const response = await axios({
     url,
     method: 'get',
-    header: {
+    headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       Authorization: `${process.env.FLUTTERWAVE_V3_SECRET_KEY}`,
     },
   });
+
+  console.log(response.data.data)
 
  /* Destructuring the response.data.data object. */
   const { status, currency, id, amount, customer } = response.data.data;
@@ -145,6 +151,9 @@ app.get('/response', async (req, res) => {
  /* Creating a wallet transaction for a user. */
   await createWalletTransaction(user._id, status, currency, amount);
 
+   /* Creating a transaction. */
+   await createTransaction(user._id, id, status, currency, amount, customer);
+
   /* Updating the wallet of the user. */
   await updateWallet(user._id, amount);
 
@@ -154,6 +163,19 @@ app.get('/response', async (req, res) => {
     data: wallet,
   });
 });
+
+
+app.get("/wallet/:userId/balance", async(req, res) =>{
+  try {
+    const { userId} = req.params
+
+    const wallet = await wallet.findOne({userId})
+
+    res.status(200).json(wallet.balance)
+  } catch (error) {
+    console.log(error)
+  }
+})
 
 // Validating User Wallet
 /**
@@ -224,7 +246,7 @@ const createTransaction = async (
   try {
     // create transaction
 
-    const transaction = await transaction.create({
+    const transaction = await Transaction.create({
       userId,
       transactionId: id,
       name: customer.name,
@@ -235,6 +257,7 @@ const createTransaction = async (
       paymentStatus: status,
       paymentGateway: 'flutterwave',
     });
+    return transaction
   } catch (
     /* A variable that is used to store the error message. */
     error
