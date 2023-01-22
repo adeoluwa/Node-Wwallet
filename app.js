@@ -18,6 +18,7 @@ const path = require('path');
 
 const Wallet = require('./model/wallet');
 
+/* Importing the WalletTransaction model. */
 const WalletTransaction = require('./model/wallet_transaction');
 
 const Transaction = require('./model/transaction');
@@ -136,11 +137,20 @@ app.get('/response', async (req, res) => {
   /* Destructuring the response.data.data object. */
   const { status, currency, id, amount, customer } = response.data.data;
 
+
+  const transcationExist = await Transaction.findOne({ transactionId: id})
+
+  if (transcationExist){
+    return res.status(409).send("Transaction Already Exist")
+  }
+
   /* Finding a user by email. */
   const user = await User.findOne({ email: customer.email });
 
   console.log(user);
 
+  /* Checking if the user exist in the database. If the user does not exist, it will return a response
+  to the client. */
   if (!user) {
     return res.status(400).json({
       message: 'user does not exist',
@@ -171,7 +181,7 @@ app.get('/wallet/:userId/balance', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const wallet = await wallet.findOne({ userId });
+    const wallet = await Wallet.findOne({ userId });
 
     res.status(200).json(wallet.balance);
   } catch (error) {

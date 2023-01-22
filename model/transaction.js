@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+/* Creating a schema for the transaction model. */
 const transactionSchema = new mongoose.Schema(
   {
     userId: {
@@ -48,5 +49,6 @@ const transactionSchema = new mongoose.Schema(
   }
 );
 
+/* Exporting the model to be used in other files. */
 module.exports = mongoose.model("Transaction", transactionSchema)
 

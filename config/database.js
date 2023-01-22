@@ -2,10 +2,9 @@ const mongoose = require('mongoose');
 
 const { MONGO_URI } = process.env;
 
-
-/* *|CURSOR_MARCADOR|* */
+/* Exporting the mongoose connection to the database. */
  module.exports = () => {
- /* Connecting to the database. */
+ 
   return  mongoose 
     .connect(MONGO_URI, {
       useNewUrlParser: true,
