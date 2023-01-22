@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-require('./config/database').connect();
+// require('./config/database').connect();
 
 const express = require('express');
 
@@ -10,21 +10,17 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
-const axios = require("axios")
+const axios = require('axios');
 
 const User = require('./model/user');
 
 const path = require('path');
 
-const wallet = require('./model/wallet');
+const Wallet = require('./model/wallet');
 
-const walletTransaction = require("./model/wallet_transaction")
+const WalletTransaction = require('./model/wallet_transaction');
 
-const transaction = require('./model/transaction');
-
-
-
-
+const Transaction = require('./model/transaction');
 
 /* Telling the server to use the express.json() middleware. */
 app.use(express.json());
@@ -117,8 +113,6 @@ app.get('/pay', (req, res) => {
   res.sendFile(path.join(__dirname + '/index.html'));
 });
 
-
-
 app.get('/response', async (req, res) => {
   /* Destructuring the transaction_id from the request query. */
   const { transaction_id } = req.query;
@@ -137,22 +131,31 @@ app.get('/response', async (req, res) => {
     },
   });
 
-  console.log(response.data.data)
+  console.log(response.data.data);
 
- /* Destructuring the response.data.data object. */
+  /* Destructuring the response.data.data object. */
   const { status, currency, id, amount, customer } = response.data.data;
 
   /* Finding a user by email. */
   const user = await User.findOne({ email: customer.email });
 
+  console.log(user);
+
+  if (!user) {
+    return res.status(400).json({
+      message: 'user does not exist',
+      data: null,
+    });
+  }
+
   /* Calling the validateUserWallet function and passing the user._id as an argument. */
   const wallet = await validateUserWallet(user._id);
 
- /* Creating a wallet transaction for a user. */
+  /* Creating a wallet transaction for a user. */
   await createWalletTransaction(user._id, status, currency, amount);
 
-   /* Creating a transaction. */
-   await createTransaction(user._id, id, status, currency, amount, customer);
+  /* Creating a transaction. */
+  await createTransaction(user._id, id, status, currency, amount, customer);
 
   /* Updating the wallet of the user. */
   await updateWallet(user._id, amount);
@@ -164,18 +167,17 @@ app.get('/response', async (req, res) => {
   });
 });
 
-
-app.get("/wallet/:userId/balance", async(req, res) =>{
+app.get('/wallet/:userId/balance', async (req, res) => {
   try {
-    const { userId} = req.params
+    const { userId } = req.params;
 
-    const wallet = await wallet.findOne({userId})
+    const wallet = await wallet.findOne({ userId });
 
-    res.status(200).json(wallet.balance)
+    res.status(200).json(wallet.balance);
   } catch (error) {
-    console.log(error)
+    console.log(error);
   }
-})
+});
 
 // Validating User Wallet
 /**
@@ -185,10 +187,10 @@ app.get("/wallet/:userId/balance", async(req, res) =>{
  */
 const validateUserWallet = async (userId) => {
   try {
-    const userWallet = await wallet.findOne({ userId });
+    const userWallet = await Wallet.findOne({ userId });
 
     if (!userWallet) {
-      const wallet = await wallet.create({
+      const wallet = await Wallet.create({
         userId,
       });
 
@@ -212,7 +214,7 @@ const validateUserWallet = async (userId) => {
  */
 const createWalletTransaction = async (userId, status, currency, amount) => {
   try {
-    const walletTransaction = await walletTransaction.create({
+    const walletTransaction = await WalletTransaction.create({
       amount,
       userId,
       isInflow: true,
@@ -257,7 +259,7 @@ const createTransaction = async (
       paymentStatus: status,
       paymentGateway: 'flutterwave',
     });
-    return transaction
+    return transaction;
   } catch (
     /* A variable that is used to store the error message. */
     error
@@ -275,7 +277,7 @@ const createTransaction = async (
  */
 const updateWallet = async (userId, amount) => {
   try {
-    const wallet = await wallet.findOneAndUpdate(
+    const wallet = await Wallet.findOneAndUpdate(
       { userId },
       { $inc: { balance: amount } },
       { new: true }
